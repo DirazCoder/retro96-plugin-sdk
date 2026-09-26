@@ -12,13 +12,20 @@
     <Description>Public C# API and manifest contracts for Retro96 .r96p plugins.</Description>
     <PackageTags>Retro96;browser;plugin;sdk;.r96p</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <PackageOutputPath>$(MSBuildProjectDirectory)\artifacts\packages</PackageOutputPath>
-    <OutputPath>$(MSBuildProjectDirectory)\artifacts\bin\$(Configuration)\</OutputPath>
+
+    <!-- Keep build output and intermediate files on distinct roots. The .NET 11 RC SDK
+         can otherwise reuse generated AssemblyInfo/TFM files when a custom OutputPath
+         is evaluated more than once. -->
+    <BaseOutputPath>$(MSBuildProjectDirectory)\artifacts\bin\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildProjectDirectory)\artifacts\obj\</BaseIntermediateOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+
     <DebugSymbols>true</DebugSymbols>
     <DebugType>portable</DebugType>
     <Deterministic>true</Deterministic>
     <IsPackable>true</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageOutputPath>$(MSBuildProjectDirectory)\artifacts\packages</PackageOutputPath>
     <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 

@@ -1,3 +1,4 @@
+
 param(
     [Parameter(Mandatory=$true)][string]$Project,
     [Parameter(Mandatory=$true)][string]$Manifest,
@@ -6,8 +7,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
-& "$PSScriptRoot/bootstrap-dotnet11.ps1"
-$Dotnet = Join-Path $PSScriptRoot '.dotnet\dotnet.exe'
+
+$Dotnet = & "$PSScriptRoot\resolve-dotnet11.ps1" | Select-Object -Last 1
+if ([string]::IsNullOrWhiteSpace($Dotnet) -or -not (Test-Path $Dotnet)) {
+    throw "Could not resolve a usable .NET SDK executable."
+}
+
 & $Dotnet build (Resolve-Path $Project) -c Release
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -22,9 +27,9 @@ if ([string]::IsNullOrWhiteSpace($assemblyRelative)) {
 }
 
 $assemblyCandidates = @(
-    (Join-Path $projectDirectory $assemblyRelative.Replace('/','\\')),
-    (Join-Path $projectDirectory (Join-Path 'dist' $assemblyRelative.Replace('/','\\'))),
-    (Join-Path $projectDirectory (Join-Path 'bin' (Join-Path 'Release' $assemblyRelative.Replace('/','\\'))))
+    (Join-Path $projectDirectory $assemblyRelative.Replace('/','\')),
+    (Join-Path $projectDirectory (Join-Path 'dist' $assemblyRelative.Replace('/','\'))),
+    (Join-Path $projectDirectory (Join-Path 'bin' (Join-Path 'Release' $assemblyRelative.Replace('/','\'))))
 )
 $assemblyPath = $assemblyCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $assemblyPath) {
@@ -35,14 +40,13 @@ if ([string]::IsNullOrWhiteSpace($Output)) {
     $Output = Join-Path $projectDirectory "$($manifestData.id)-$($manifestData.version).r96p"
 }
 
-# Normalize the output path without requiring the file to already exist.
 $outputDirectory = [System.IO.Path]::GetFullPath((Split-Path $Output -Parent))
 $outputFile = Join-Path $outputDirectory (Split-Path $Output -Leaf)
 New-Item -ItemType Directory -Force -Path $outputDirectory | Out-Null
 
 $staging = Join-Path $env:TEMP ("retro96-plugin-" + [guid]::NewGuid().ToString('N'))
 try {
-    $assemblyDestination = Join-Path $staging $assemblyRelative.Replace('/','\\')
+    $assemblyDestination = Join-Path $staging $assemblyRelative.Replace('/','\')
     New-Item -ItemType Directory -Force -Path (Split-Path $assemblyDestination -Parent) | Out-Null
     Copy-Item $manifestPath (Join-Path $staging 'plugin.json')
     Copy-Item $assemblyPath $assemblyDestination
