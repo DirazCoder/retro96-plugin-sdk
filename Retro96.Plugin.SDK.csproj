@@ -4,12 +4,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <AssemblyName>Retro96.Plugin.SDK</AssemblyName>
+    <AssemblyName>Retro96</AssemblyName>
     <RootNamespace>Retro96.Plugins</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.0.1</Version>
+    <PackageVersion>1.0.1</PackageVersion>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.1.0</FileVersion>
     <PackageId>Retro96.Plugin.SDK</PackageId>
     <Authors>Retro96</Authors>
-    <Description>Public C# API and manifest contracts for Retro96 .r96p plugins.</Description>
+    <Description>Public C# API and manifest contracts for Retro96 .r96p plugins. The contract assembly intentionally uses the host assembly identity Retro96 so plugin packages do not need to ship the SDK DLL.</Description>
     <PackageTags>Retro96;browser;plugin;sdk;.r96p</PackageTags>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
 
@@ -26,10 +29,10 @@
     <IsPackable>true</IsPackable>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageOutputPath>$(MSBuildProjectDirectory)\artifacts\packages</PackageOutputPath>
-    <PackageReadmeFile Condition="Exists('README.md')">README.md</PackageReadmeFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Update="README.md" Condition="Exists('README.md')" Pack="true" PackagePath="\" />
+    <None Update="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

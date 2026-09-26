@@ -13,6 +13,11 @@ if ([string]::IsNullOrWhiteSpace($Dotnet) -or -not (Test-Path $Dotnet)) {
 }
 
 $Solution = Join-Path $PSScriptRoot '..\Retro96.Plugin.SDK.sln'
+# Start clean so a previously built plugin DLL can never be mistaken for the
+# current SDK contract. This is especially important after the 1.0.1 contract
+# assembly identity correction (Retro96.Plugin.SDK -> Retro96).
+Remove-Item -Path @((Join-Path $PSScriptRoot 'artifacts'), (Join-Path $PSScriptRoot '..\examples\Retro96.SamplePlugin\dist')) -Recurse -Force -ErrorAction SilentlyContinue
+
 & $Dotnet restore $Solution
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -23,17 +28,9 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 & $Dotnet pack (Join-Path $PSScriptRoot 'Retro96.Plugin.SDK.csproj') -c $Configuration --no-build --no-restore
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$Dll = Join-Path $PSScriptRoot "artifacts\bin\$Configuration\Retro96.Plugin.SDK.dll"
+$Dll = Join-Path $PSScriptRoot "artifacts\bin\$Configuration\Retro96.dll"
 if (-not (Test-Path $Dll)) { throw "SDK DLL was not produced: $Dll" }
 
 $NupkgDir = Join-Path $PSScriptRoot 'artifacts\packages'
-$InstallDir = Join-Path $env:LOCALAPPDATA 'Retro96\PluginSDK'
-$FeedDir = Join-Path $InstallDir 'packages'
-New-Item -ItemType Directory -Force -Path $InstallDir, $FeedDir | Out-Null
-Copy-Item -Force $Dll (Join-Path $InstallDir 'Retro96.Plugin.SDK.dll')
-Get-ChildItem -Path $NupkgDir -Filter 'Retro96.Plugin.SDK.*.nupkg' -File | Copy-Item -Destination $FeedDir -Force
-
-Write-Host "SDK DLL: $Dll"
+Write-Host "SDK contract DLL: $Dll"
 Write-Host "SDK packages: $NupkgDir"
-Write-Host "Installed SDK contract: $InstallDir\Retro96.Plugin.SDK.dll"
-Write-Host "Local NuGet feed for Retro96 host: $FeedDir"

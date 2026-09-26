@@ -8,7 +8,6 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
-# Resolve the developer's installed dotnet first (global.json is authoritative); bootstrap is fallback only.
 $Dotnet = & "$PSScriptRoot\resolve-dotnet11.ps1" | Select-Object -Last 1
 if ([string]::IsNullOrWhiteSpace($Dotnet) -or -not (Test-Path $Dotnet)) {
     throw "Could not resolve a usable .NET SDK executable."
@@ -35,6 +34,15 @@ $assemblyCandidates = @(
 $assemblyPath = $assemblyCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $assemblyPath) {
     throw "Plugin assembly not found. Checked: $($assemblyCandidates -join ', ')"
+}
+
+# Reject binaries compiled against the pre-1.0.1 SDK assembly identity. Those
+# plugins request `Retro96.Plugin.SDK` at runtime, while the host intentionally
+# shares its public contract from the `Retro96` host assembly. They cannot be
+# safely rebound by AssemblyLoadContext.
+$references = [System.Reflection.AssemblyName]::GetAssemblyName($assemblyPath).GetReferencedAssemblies()
+if ($references | Where-Object { $_.Name -eq 'Retro96.Plugin.SDK' }) {
+    throw "The plugin DLL references the obsolete `Retro96.Plugin.SDK` assembly identity. Clean/rebuild the plugin against the current Retro96 Plugin SDK 1.0.1 before packaging."
 }
 
 if ([string]::IsNullOrWhiteSpace($Output)) {

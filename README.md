@@ -36,22 +36,16 @@ The build script:
 1. resolves an existing compatible `dotnet` first;
 2. restores and builds the SDK and sample plugin;
 3. explicitly packs the SDK NuGet package (normal `dotnet build` does not require packaging files);
-4. verifies `Retro96.Plugin.SDK.dll` exists;
-5. installs the public contract DLL to `%LOCALAPPDATA%\Retro96\PluginSDK\Retro96.Plugin.SDK.dll` for the Retro96 host.
+4. verifies `Retro96.dll` exists;
+5. builds the public contract assembly as `Retro96.dll` for plugin compilation; the host already contains the matching contract.
 
 Artifacts:
 
 ```text
-Retro96.Plugin.SDKrtifactsin\Release\Retro96.Plugin.SDK.dll
+Retro96.Plugin.SDKrtifactsin\Release\Retro96.dll
 Retro96.Plugin.SDKrtifacts\packages\Retro96.Plugin.SDK.1.0.0.nupkg
 examples\Retro96.SamplePlugin\dist\lib\Retro96.SamplePlugin.dll
 ```
-
-## Retro96 host consumption
-
-The Retro96 host is a separate project. It does not build or contain the SDK source. After running `build.ps1`, the SDK package is available from `%LOCALAPPDATA%\Retro96\PluginSDK\packages`; the host restores `Retro96.Plugin.SDK` from that local feed. This keeps SDK compilation and plugin compilation entirely in the SDK repository.
-
-A normal SDK `dotnet build` does not require package generation or a README to exist. Use `dotnet pack` (or `build.ps1`) when you actually want the NuGet package.
 
 ## Authoring a plugin
 
@@ -100,6 +94,14 @@ Do **not** reference `Retro96.csproj`. Plugins compile against the SDK contract 
 ```
 
 A plugin is installed disabled. The host grants only permissions explicitly requested in the manifest and approved by the user.
+
+## SDK contract assembly identity
+
+The SDK package ID is **`Retro96.Plugin.SDK`**, but the compiled contract assembly is intentionally named **`Retro96.dll`**. Retro96 itself compiles the same public `PluginApi.cs` contract into its host assembly, so the sandbox can share one runtime type identity without requiring the host application to build or install the SDK project.
+
+Plugins built with pre-1.0.1 SDK revisions may still reference an assembly named `Retro96.Plugin.SDK`. Those binaries are not compatible with the current host contract and must be clean-rebuilt. Delete the plugin project's `bin`/`obj` output, restore with the current SDK, rebuild the DLL, and package it again.
+
+The SDK build script deliberately clears its artifact and sample-plugin output directories before building so stale contract DLLs are not reused. The plugin pack script also rejects a DLL that still references the obsolete assembly name.
 
 ## API version 1
 
@@ -235,6 +237,6 @@ The pack script uses an installed compatible `dotnet` first and bootstraps the p
 
 ## Separation from the host
 
-The Retro96 host consumes `Retro96.Plugin.SDK.dll` as a binary contract reference. The host repository does not own or build the SDK project. The SDK repository owns the SDK assembly, sample plugin, NuGet package, and `.r96p` packaging tools.
+The Retro96 host compiles the same public API source directly into its host assembly. The standalone SDK builds a contract assembly named `Retro96.dll` for plugin compilation only; the host does not restore or produce the SDK assembly, and `.r96p` packages do not ship it. The SDK repository owns the contract project, sample plugin, NuGet package, and `.r96p` packaging tools.
 
 This keeps the plugin API versioned and independently buildable while preserving a stable runtime contract for the sandboxed host.
