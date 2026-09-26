@@ -26,10 +26,10 @@
     <IsPackable>true</IsPackable>
     <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
     <PackageOutputPath>$(MSBuildProjectDirectory)\artifacts\packages</PackageOutputPath>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReadmeFile Condition="Exists('README.md')">README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Update="README.md" Condition="Exists('README.md')" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>

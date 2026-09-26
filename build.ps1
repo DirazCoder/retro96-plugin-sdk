@@ -28,10 +28,12 @@ if (-not (Test-Path $Dll)) { throw "SDK DLL was not produced: $Dll" }
 
 $NupkgDir = Join-Path $PSScriptRoot 'artifacts\packages'
 $InstallDir = Join-Path $env:LOCALAPPDATA 'Retro96\PluginSDK'
-New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+$FeedDir = Join-Path $InstallDir 'packages'
+New-Item -ItemType Directory -Force -Path $InstallDir, $FeedDir | Out-Null
 Copy-Item -Force $Dll (Join-Path $InstallDir 'Retro96.Plugin.SDK.dll')
-Get-ChildItem -Path $NupkgDir -Filter 'Retro96.Plugin.SDK.*.nupkg' -File | Copy-Item -Destination $InstallDir -Force
+Get-ChildItem -Path $NupkgDir -Filter 'Retro96.Plugin.SDK.*.nupkg' -File | Copy-Item -Destination $FeedDir -Force
 
 Write-Host "SDK DLL: $Dll"
 Write-Host "SDK packages: $NupkgDir"
 Write-Host "Installed SDK contract: $InstallDir\Retro96.Plugin.SDK.dll"
+Write-Host "Local NuGet feed for Retro96 host: $FeedDir"

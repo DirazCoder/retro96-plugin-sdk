@@ -47,6 +47,12 @@ Retro96.Plugin.SDKrtifacts\packages\Retro96.Plugin.SDK.1.0.0.nupkg
 examples\Retro96.SamplePlugin\dist\lib\Retro96.SamplePlugin.dll
 ```
 
+## Retro96 host consumption
+
+The Retro96 host is a separate project. It does not build or contain the SDK source. After running `build.ps1`, the SDK package is available from `%LOCALAPPDATA%\Retro96\PluginSDK\packages`; the host restores `Retro96.Plugin.SDK` from that local feed. This keeps SDK compilation and plugin compilation entirely in the SDK repository.
+
+A normal SDK `dotnet build` does not require package generation or a README to exist. Use `dotnet pack` (or `build.ps1`) when you actually want the NuGet package.
+
 ## Authoring a plugin
 
 Reference the SDK project while developing inside this repository:

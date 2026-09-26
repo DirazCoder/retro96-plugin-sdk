@@ -1,0 +1,7 @@
+# .NET build output
+artifacts/
+dist/
+**/bin/
+**/obj/
+.dotnet/
+.vs/

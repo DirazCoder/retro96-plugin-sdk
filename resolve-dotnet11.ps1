@@ -8,14 +8,21 @@ function Get-UsableDotnet {
     $cmd = Get-Command dotnet -ErrorAction SilentlyContinue
     if ($null -eq $cmd) { return $null }
 
+    $previous = Get-Location
     try {
+        # global.json is intentionally authoritative. Execute dotnet from this SDK
+        # directory so the installed SDK is accepted only when the pinned SDK can
+        # actually resolve here. If it cannot, the caller falls back to bootstrap.
+        Set-Location $PSScriptRoot
         $version = (& $cmd.Source --version 2>$null).Trim()
         if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($version)) {
-            # Run from the SDK directory so global.json is applied by dotnet itself.
             return $cmd.Source
         }
     }
     catch { }
+    finally {
+        Set-Location $previous
+    }
 
     return $null
 }

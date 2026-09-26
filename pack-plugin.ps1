@@ -8,6 +8,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
+# Resolve the developer's installed dotnet first (global.json is authoritative); bootstrap is fallback only.
 $Dotnet = & "$PSScriptRoot\resolve-dotnet11.ps1" | Select-Object -Last 1
 if ([string]::IsNullOrWhiteSpace($Dotnet) -or -not (Test-Path $Dotnet)) {
     throw "Could not resolve a usable .NET SDK executable."
