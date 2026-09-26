@@ -15,7 +15,7 @@
     <DebugType>portable</DebugType>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\Retro96.Plugin.SDK\Retro96.Plugin.SDK.csproj" />
+    <ProjectReference Include="..\..\Retro96.Plugin.SDK.csproj" />
   </ItemGroup>
   <Target Name="CopyRetro96PluginDll" AfterTargets="Build;Publish">
     <MakeDir Directories="$(MSBuildProjectDirectory)\dist\lib" />
