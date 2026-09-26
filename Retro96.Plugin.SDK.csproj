@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>Retro96.Plugin.SDK</AssemblyName>
+    <RootNamespace>Retro96.Plugins</RootNamespace>
+    <Version>1.0.0</Version>
+    <PackageId>Retro96.Plugin.SDK</PackageId>
+    <Authors>Retro96</Authors>
+    <Description>Public C# API and manifest contracts for Retro96 .r96p plugins.</Description>
+    <PackageTags>Retro96;browser;plugin;sdk;.r96p</PackageTags>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageOutputPath>$(MSBuildProjectDirectory)\artifacts\packages</PackageOutputPath>
+    <OutputPath>$(MSBuildProjectDirectory)\artifacts\bin\$(Configuration)\</OutputPath>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+    <Deterministic>true</Deterministic>
+    <IsPackable>true</IsPackable>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

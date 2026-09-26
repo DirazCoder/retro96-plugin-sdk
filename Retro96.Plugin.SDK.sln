@@ -1,0 +1,21 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Retro96 Plugin SDK", "Retro96.Plugin.SDK.csproj", "{BDF4CE1F-1E1F-46E7-9C3D-69B5DFF4E9A8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BDF4CE1F-1E1F-46E7-9C3D-69B5DFF4E9A8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BDF4CE1F-1E1F-46E7-9C3D-69B5DFF4E9A8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BDF4CE1F-1E1F-46E7-9C3D-69B5DFF4E9A8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BDF4CE1F-1E1F-46E7-9C3D-69B5DFF4E9A8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
