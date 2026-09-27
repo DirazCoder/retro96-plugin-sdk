@@ -1,8 +1,8 @@
 # Retro96 Plugin SDK
 
-A standalone C#/.NET 11 SDK for authoring Retro96 `.r96p` plugins. The browser host doesn't contain this SDK's source and doesn't build it as part of the host solution — plugin authors compile against a separate, versioned contract instead of the host's own code.
+A standalone C#/.NET 11 SDK for authoring Retro96 `.r96p` plugins. The browser host compiles the public contract directly into its own binary, allowing plugins to target a versioned SDK assembly (`Retro96.dll`) without requiring the host source.
 
-A plugin package is a ZIP:
+A plugin package is a ZIP archive formatted as follows:
 
 ```text
 Example.r96p
@@ -13,31 +13,29 @@ Example.r96p
 
 ## Requirements
 
-- Windows
-- .NET 11 SDK (pinned version declared in `Retro96.Plugin.SDK/global.json`)
-- C# / normal .NET class-library tooling
+* Windows
+* .NET 11 SDK (version declared in `Retro96.Plugin.SDK/global.json`)
+* C# / standard .NET class-library tooling
 
-### How SDK installation works
+### SDK Installation
 
-The build scripts first ask whatever `dotnet` is already on `PATH` to resolve the pinned `global.json`. If that works, they use it. If nothing usable is installed, `bootstrap-dotnet11.ps1` downloads the pinned .NET 11 SDK into the repo's `.dotnet` directory as a fallback.
+The build scripts look for a compatible `dotnet` executable on your `PATH`. If missing, `bootstrap-dotnet11.ps1` downloads the pinned .NET 11 SDK into the local `.dotnet` directory as a fallback.
 
 ## Building the SDK
 
-From the repository root:
+Run the build script from the repository root:
 
 ```powershell
 .\Retro96.Plugin.SDK\build.ps1
 ```
 
-What it does:
+The script performs the following steps:
+1. Resolves a compatible `dotnet` installation.
+2. Restores and builds the SDK and sample plugins.
+3. Packs the `Retro96.Plugin.SDK` NuGet package.
+4. Generates the public contract assembly as `Retro96.dll`.
 
-1. resolves an existing compatible `dotnet` first
-2. restores and builds the SDK and sample plugin
-3. explicitly packs the SDK NuGet package (a plain `dotnet build` won't produce packaging files on its own)
-4. verifies `Retro96.dll` exists
-5. builds the public contract assembly as `Retro96.dll` — the host already ships the matching contract, so plugins compile against this instead
-
-Artifacts:
+Outputs:
 
 ```text
 Retro96.Plugin.SDK\artifacts\bin\Release\Retro96.dll
@@ -45,24 +43,24 @@ Retro96.Plugin.SDK\artifacts\packages\Retro96.Plugin.SDK.1.0.0.nupkg
 examples\Retro96.SamplePlugin\dist\lib\Retro96.SamplePlugin.dll
 ```
 
-## Authoring a plugin
+## Authoring a Plugin
 
-Reference the SDK project directly if you're developing inside this repo:
+Reference the SDK project directly within this repository:
 
 ```xml
-<ProjectReference Include="..\..\Retro96.Plugin.SDK\Retro96.Plugin.SDK.csproj" />
+<ProjectReference Include="..\..\Retro96.Plugin.SDK\Retro96.Plugin.SDK.csproj"/>
 ```
 
-Otherwise, consume the packed `Retro96.Plugin.SDK` NuGet package or the built DLL from another repository.
+For external repositories, reference the `Retro96.Plugin.SDK` NuGet package or the built `Retro96.dll`.
 
-Implement the plugin interface:
+Implement `IRetro96Plugin`:
 
 ```csharp
 public sealed class MyPlugin : IRetro96Plugin
 {
     public void Initialize(IRetro96PluginHost host)
     {
-        // register features through the public host interfaces
+        // Register features via host interfaces
     }
 
     public void Dispose()
@@ -71,11 +69,17 @@ public sealed class MyPlugin : IRetro96Plugin
 }
 ```
 
-Don't reference `Retro96.csproj` directly — plugins compile against the SDK contract only.
+Do not reference `Retro96.csproj` directly. Plugins compile strictly against the SDK contract.
 
-## Manifest
+## Contract Assembly Naming (`Retro96.dll`)
 
-`plugin.json` declares identity, API version, the DLL, entry point, and requested permissions:
+While the NuGet package ID is `Retro96.Plugin.SDK`, the compiled contract assembly is named `Retro96.dll`. Retro96 compiles `PluginApi.cs` directly into the host binary, matching runtime type identities across both sides.
+
+Plugins built against pre-1.0.1 SDK revisions referenced an assembly named `Retro96.Plugin.SDK.dll` and will fail to load in current host versions. To fix this, delete your project's `bin`/`obj` folders, restore against the current SDK, rebuild, and repackage.
+
+## Plugin Manifest (`plugin.json`)
+
+The manifest defines identity, API version, entry point, permissions, supported MIME types, and the optional JavaScript bridge identifier:
 
 ```json
 {
@@ -87,83 +91,207 @@ Don't reference `Retro96.csproj` directly — plugins compile against the SDK co
   "description": "Example Retro96 plugin.",
   "assembly": "lib/ExamplePlugin.dll",
   "entryPoint": "Example.Plugin",
-  "permissions": ["ui", "browser.read"]
+  "permissions": [
+    "embed.renderer",
+    "embed.network",
+    "embed.navigate",
+    "embed.status",
+    "embed.print",
+    "embed.script"
+  ],
+  "embed_types": [
+    "application/x-example"
+  ],
+  "script_name": "ExamplePlayer"
 }
 ```
 
-Plugins install disabled. The host only grants permissions that are both requested in the manifest and approved by the user.
+* `embed_types`: MIME types the plugin can render.
+* `script_name`: The identifier exposed to document scripts for finding the plugin.
 
-## Why the contract assembly is named `Retro96.dll`
+Plugins install disabled by default. The host grants only permissions declared in the manifest and explicitly approved by the user.
 
-The NuGet package ID is `Retro96.Plugin.SDK`, but the compiled contract assembly is `Retro96.dll` on purpose. Retro96 compiles the same public `PluginApi.cs` contract straight into its host assembly, so both sides share one runtime type identity without the host needing to build or install the SDK project itself.
+## Core API Services (`Retro96.Plugins`)
 
-Plugins built against pre-1.0.1 SDK revisions may still reference an assembly literally named `Retro96.Plugin.SDK`. Those binaries don't work with the current host contract — clean-rebuild them: delete the plugin project's `bin`/`obj`, restore against the current SDK, rebuild, and repackage.
+The public API defined in `Retro96.Plugin.SDK/PluginApi.cs` provides access to host services:
 
-The build script clears its artifact and sample-plugin output directories before every build so a stale contract DLL can't get reused by accident. The pack script also rejects any DLL that still references the old assembly name.
+* **`IBrowserService`**: URL/title access, navigation, reloading, history, tabs, scrolling, zoom, viewport sizing, cookies, find-in-page, and PNG screenshots.  
+  *Permissions*: `browser.read`, `browser.navigate`, `browser.windows`, `browser.events`, `browser.zoom`, `browser.cookies`, `browser.find`, `browser.screenshot`
+* **`IUiService`**: Custom menus, toolbar items, context options, status text, progress meters, dialogs, and constrained UI panels.  
+  *Permissions*: `ui`, `ui.panel`
+* **`INetworkService`**: Managed HTTP GET, POST, and custom requests.  
+  *Permission*: `network`
+* **`IFileSystemService`**: File operations confined to the plugin's isolated data directory.  
+  *Permission*: `filesystem`
+* **`IStorageService`**: Key-value storage, JSON serialization helpers, and storage usage metrics.  
+  *Permission*: `storage`
+* **`IEventsService`**: Browser lifecycle events and worker-local timers.  
+  *Permissions*: `browser.events` (timers do not require permissions)
+* **`IClipboardService`**: System clipboard text and image access.  
+  *Permission*: `clipboard`
+* **`IAudioService`**: Audio playback, looping, and volume control.  
+  *Permission*: `audio.playback`
+* **`INotificationService`**: System desktop notifications with interaction callbacks.  
+  *Permission*: `notifications`
+* **`IDialogsService`**: Isolated file open and save dialogs.  
+  *Permission*: `dialogs`
 
-## API version 1
+---
 
-The public contract lives in `Retro96.Plugin.SDK/PluginApi.cs`, under the `Retro96.Plugins` namespace.
+## Embedded Content (`IEmbeddedContentService`)
 
-### Browser — `IBrowserService`
+The embedded content API provides out-of-process rendering for custom media types (such as Director, QuickTime, or custom viewers).
 
-Current URL/title, navigation, reload, back/forward, new-window navigation, scrolling, zoom, viewport size, origin-scoped cookies, find-in-page, viewport PNG capture.
+To render embedded content, request `embed.renderer` and register handled MIME types:
 
-Permissions: `browser.read`, `browser.navigate`, `browser.windows`, `browser.events`, `browser.zoom`, `browser.cookies`, `browser.find`, `browser.screenshot`
+```csharp
+public sealed class MyEmbeddedPlugin : IRetro96Plugin
+{
+    public void Initialize(IRetro96PluginHost host)
+    {
+        host.Embeds.Register(
+            new EmbeddedContentRegistration(
+                new[] { "application/x-example", "application/example" },
+                CreateInstance));
+    }
 
-### User interface — `IUiService`
+    private static IEmbeddedContentInstance CreateInstance(
+        EmbeddedContentContext context,
+        IPluginByteStream stream,
+        IEmbeddedContentHost contentHost,
+        IEmbeddedScriptBridge script)
+    {
+        return new ExampleInstance(context, stream, contentHost, script);
+    }
 
-File-menu items, toolbar buttons, context-menu items, status text, progress, message dialogs, input dialogs, and constrained plugin panels/widgets — deliberately not raw WinForms controls, since a plugin panel shouldn't be able to do anything the sandbox model doesn't already account for.
+    public void Dispose() { }
+}
+```
 
-Permissions: `ui`, `ui.panel`
+### Rendering & Compositing
 
-### Network — `INetworkService`
+Plugins render frames into software pixel buffers rather than accessing native window handles (`HWND` or GDI surfaces):
 
-String/binary GET, string/binary POST, and a general request API with broker-controlled headers.
+```csharp
+Task<EmbeddedFrameBuffer> RenderAsync(
+    EmbeddedRenderRequest request,
+    CancellationToken cancellationToken = default);
+```
 
-Permission: `network`
+`EmbeddedFrameBuffer` supplies dimensions, stride, and BGRA-8888 premultiplied pixel data. The host composites these buffers using Skia.
 
-### Filesystem — `IFileSystemService`
+### Input Handling
 
-Confined to the plugin's private data directory: text/binary read/write, existence checks, listing, deletion, directory creation.
+The host forwards input events to the plugin:
 
-Permission: `filesystem`
+```csharp
+Task HandleInputAsync(
+    EmbeddedInputEvent inputEvent,
+    CancellationToken cancellationToken = default);
+```
 
-### Storage — `IStorageService`
+Supported events: mouse movement, button states, scroll wheel, key presses, text input, and window focus changes.
 
-String values, key enumeration, JSON object helpers, deletion, approximate byte usage.
+### Data Streams
 
-Permission: `storage`
+Source data arrives as a push-based stream with explicit flow control:
 
-### Events — `IEventsService`
+```csharp
+public interface IPluginByteStream : IDisposable
+{
+    bool CanSeek { get; }
+    long? Length { get; }
+    long Position { get; }
+    bool EndOfStream { get; }
 
-Navigation/page-loaded events, host shutdown, focus changes, worker-local timers. Browser events need `browser.events`; timers are worker-local and don't need any extra permission.
+    event EventHandler<EmbeddedStreamChunkEventArgs>? ChunkReceived;
 
-### Clipboard — `IClipboardService`
+    Task RequestMoreAsync(int maxBytes, CancellationToken cancellationToken = default);
+}
+```
 
-Text read/write, clipboard-change events, image read/write.
+Plugins request additional bytes explicitly via `RequestMoreAsync` to prevent buffering large resources unnecessarily.
 
-Permission: `clipboard`
+If `CanSeek` is true, cast the stream to `IPluginSeekableByteStream`:
 
-### Audio — `IAudioService`
+```csharp
+public interface IPluginSeekableByteStream : IPluginByteStream
+{
+    Task<EmbeddedSeekResult> SeekAsync(
+        long offset, 
+        SeekOrigin origin, 
+        CancellationToken cancellationToken = default);
+}
+```
 
-Sandbox-relative audio playback, stop, volume, looping, completion notification.
+### Additional Embedded Capabilities
 
-Permission: `audio.playback`
+* **Network**: Fetch secondary resources via `OpenStreamAsync` (requires `embed.network`). Returns a streamed `IPluginByteStream`.
+* **Context**: Inspect `CurrentUrl` and `UserAgent` via the host context.
+* **Navigation**: Trigger host navigation using `RequestNavigationAsync` (requires `embed.navigate`).
+* **Status**: Set host status bar text via `SetStatusAsync` (requires `embed.status`).
+* **Printing**: Render print frames at target DPI via `RenderAsync` when `EmbeddedRenderRequest.IsPrint` is true (requires `embed.print`).
 
-### Notifications — `INotificationService`
+---
 
-OS notifications with an optional click callback.
+## Embedded JavaScript Bridge
 
-Permission: `notifications`
+Request `embed.script` to enable asynchronous interop between page scripts and the plugin over the named-pipe broker.
 
-### File dialogs — `IDialogsService`
+### Type System (`JsValue`)
 
-Sandbox-safe open/save pickers. Open copies the chosen file into the plugin sandbox. Save streams a sandbox file out to a user-picked destination — the plugin never sees the real host path either way.
+The bridge supports flat, strongly-typed values:
+* Primitives: `null`, `string`, `number`, `bool`
+* Flat arrays of primitives
+* Flat key-value dictionaries of primitives
 
-Permission: `dialogs`
+Nested structures, function references, DOM nodes, and raw objects are unsupported.
 
-## All permission names
+```csharp
+var args = new[] { JsValue.From("play"), JsValue.From(10.0), JsValue.From(true) };
+
+var options = JsValue.FromObject(new Dictionary<string, JsValue>
+{
+    ["loop"] = JsValue.From(true),
+    ["volume"] = JsValue.From(0.75)
+});
+```
+
+### Exposing Plugin Methods
+
+Register handlers in `IEmbeddedScriptBridge.Methods`:
+
+```csharp
+script.Methods["getVersion"] = async args => JsValue.From("0.1");
+
+script.Methods["add"] = async args =>
+{
+    var a = args[0].NumberValue;
+    var b = args[1].NumberValue;
+    return JsValue.From(a + b);
+};
+```
+
+Page JavaScript executes these methods asynchronously through the host's embed collection:
+
+```javascript
+const plugin = document.embeds[0];
+const version = await plugin.call("getVersion");
+```
+
+### Invoking Page Functions
+
+Call page-defined functions via `CallPageFunction`:
+
+```csharp
+JsValue result = await script.CallPageFunction(
+    "onDirectorEvent",
+    new[] { JsValue.From("started"), JsValue.From(1.0) });
+```
+
+---
+
+## Permission Reference
 
 ```text
 browser.read
@@ -174,8 +302,10 @@ browser.zoom
 browser.cookies
 browser.find
 browser.screenshot
+
 ui
 ui.panel
+
 storage
 network
 filesystem
@@ -183,42 +313,41 @@ clipboard
 audio.playback
 notifications
 dialogs
+
+embed.renderer
+embed.network
+embed.navigate
+embed.status
+embed.print
+embed.script
 ```
 
-## Sandbox model
+---
 
-The host isolates plugins with:
+## Security & Isolation Model
 
-- a separate plugin worker process
-- Windows AppContainer isolation
-- Job Object process/resource controls
-- a named-pipe broker
-- permission checks at both the worker and host broker boundaries
-- no direct host filesystem paths exposed to plugins
-- all plugin API calls serialized across the broker
+Plugins execute inside a sandboxed environment:
+* Out-of-process isolation via AppContainer and Windows Job Objects.
+* IPC mediated via a named-pipe broker enforcing permission checks on both ends.
+* No direct access to host filesystem paths, raw network sockets, or window handles.
+* Frame buffers composited host-side via Skia.
 
-A `.r96p` package contains your compiled plugin DLL and manifest — nothing else. It doesn't and can't contain the browser executable or browser source.
+---
 
-## Building and packaging the sample plugin
+## Packaging Examples
 
-The sample plugin is a real class library. Building it always produces:
-
-```text
-examples\Retro96.SamplePlugin\dist\lib\Retro96.SamplePlugin.dll
-```
-
-To build/package it explicitly:
+To package a plugin using `pack-plugin.ps1`:
 
 ```powershell
+# Director Stub Example
+.\Retro96.Plugin.SDK\pack-plugin.ps1 `
+  -Project .\examples\Retro96.DirectorStubPlugin\Retro96.DirectorStubPlugin.csproj `
+  -Manifest .\examples\Retro96.DirectorStubPlugin\plugin.json
+
+# Sample Plugin Example
 .\Retro96.Plugin.SDK\pack-plugin.ps1 `
   -Project .\examples\Retro96.SamplePlugin\Retro96.SamplePlugin.csproj `
   -Manifest .\examples\Retro96.SamplePlugin\plugin.json
 ```
 
-The pack script uses an installed compatible `dotnet` if one's available, and only bootstraps the pinned SDK when it has to.
-
-## Why this is a separate repo from the host
-
-The Retro96 host compiles the same public API source directly into its own assembly. This SDK builds an equivalent contract assembly, `Retro96.dll`, purely for plugin compilation — the host never restores or produces the SDK assembly, and `.r96p` packages never ship it. This SDK repo owns the contract project, the sample plugin, the NuGet package, and the `.r96p` packaging tools; the host repo owns the runtime.
-
-That split is what lets the plugin API get versioned and built independently while the sandboxed host still gets a stable runtime contract to trust.
+Output assemblies compile to their respective `dist/lib/` directories and package into `.r96p` archives.
