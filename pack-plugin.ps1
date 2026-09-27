@@ -70,6 +70,14 @@ New-Item -ItemType Directory -Force -Path (Join-Path $stagingDir 'lib') | Out-Nu
 Copy-Item $manifestPath (Join-Path $stagingDir 'plugin.json')
 Copy-Item $assemblyPath (Join-Path $stagingDir (Join-Path 'lib' (Split-Path $manifestData.assembly -Leaf)))
 
+# Also bundle native DLLs from dist\lib
+$distLib = Join-Path $projectDirectory (Join-Path 'dist' 'lib')
+if (Test-Path $distLib) {
+    Get-ChildItem $distLib -File | Where-Object { $_.FullName -ne $assemblyPath } | ForEach-Object {
+        Copy-Item $_.FullName (Join-Path $stagingDir (Join-Path 'lib' $_.Name)) -Force
+    }
+}
+
 if (Test-Path $outputFile) {
     Remove-Item $outputFile -Force
 }
