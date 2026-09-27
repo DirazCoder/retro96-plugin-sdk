@@ -1,0 +1,13 @@
+{
+  "id": "retro96.director.stub",
+  "name": "Retro96 Director Stub Plugin",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "author": "Retro96",
+  "description": "Sandboxed wiring test for application/x-director embedded rendering and the async JS bridge.",
+  "assembly": "lib/Retro96.DirectorStubPlugin.dll",
+  "entryPoint": "Retro96.DirectorStubPlugin.DirectorStubPlugin",
+  "permissions": ["embed.renderer", "embed.status", "embed.print", "embed.script"],
+  "embed_types": ["application/x-director"],
+  "script_name": "director"
+}
