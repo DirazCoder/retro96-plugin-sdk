@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <TargetExt>.dll</TargetExt>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Retro96.TransformSamplePlugin</AssemblyName>
+    <RootNamespace>Retro96.TransformSamplePlugin</RootNamespace>
+    <BaseOutputPath>$(MSBuildProjectDirectory)\dist\build\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildProjectDirectory)\dist\obj\</BaseIntermediateOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <Deterministic>true</Deterministic>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>portable</DebugType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Retro96.Plugin.SDK.csproj" />
+  </ItemGroup>
+  <Target Name="CopyRetro96PluginDll" AfterTargets="Build;Publish">
+    <MakeDir Directories="$(MSBuildProjectDirectory)\dist\lib" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MSBuildProjectDirectory)\dist\lib" SkipUnchangedFiles="false" />
+  </Target>
+</Project>

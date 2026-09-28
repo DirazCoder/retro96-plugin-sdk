@@ -111,6 +111,18 @@ The manifest defines identity, API version, entry point, permissions, supported 
 
 Plugins install disabled by default. The host grants only permissions declared in the manifest and explicitly approved by the user.
 
+For `content.transform`, the manifest must also declare `content_transform_scopes`. Each entry has a URL glob and MIME glob; only matching responses are delivered to the plugin. Returned HTML is sanitized by the host before normal parsing.
+
+```json
+"permissions": ["content.transform"],
+"content_transform_scopes": [
+  { "url": "https://example.test/*", "mime": "text/html" },
+  { "url": "https://example.test/docs/*", "mime": "text/*" }
+]
+```
+
+`*` matches any sequence and `?` matches one character. Scope patterns are limited to 2048 characters per entry.
+
 ## Core API Services (`Retro96.Plugins`)
 
 The public API defined in `Retro96.Plugin.SDK/PluginApi.cs` provides access to host services:
@@ -320,6 +332,20 @@ embed.navigate
 embed.status
 embed.print
 embed.script
+page.read
+network.rules
+protocol
+content.transform
+page.style
+tabs
+history
+bookmarks
+downloads
+omnibox
+settings
+ui.extras
+embed.audio
+embed.extras
 ```
 
 ---

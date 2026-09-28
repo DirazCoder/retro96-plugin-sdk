@@ -1,0 +1,14 @@
+{
+  "id": "retro96.transform.sample",
+  "name": "Retro96 Transform Sample",
+  "version": "1.0.0",
+  "apiVersion": 1,
+  "author": "Retro96",
+  "description": "Example manifest for the scoped content.transform API.",
+  "assembly": "lib/Retro96.TransformSamplePlugin.dll",
+  "entryPoint": "Retro96.TransformSamplePlugin.TransformSamplePlugin",
+  "permissions": ["content.transform"],
+  "content_transform_scopes": [
+    { "url": "https://example.test/*", "mime": "text/html" }
+  ]
+}
