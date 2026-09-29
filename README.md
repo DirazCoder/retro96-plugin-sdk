@@ -1,8 +1,12 @@
 # Retro96 Plugin SDK
 
-A standalone C#/.NET 11 SDK for authoring Retro96 `.r96p` plugins. The browser host compiles the public contract directly into its own binary, allowing plugins to target a versioned SDK assembly (`Retro96.dll`) without requiring the host source.
+A standalone C#/.NET 11 SDK for authoring Retro96 `.r96p` plugins.
 
-A plugin package is a ZIP archive formatted as follows:
+This project contains the public plugin contract (`PluginApi.cs`), the SDK build/pack tooling, and sample plugins. The Retro96 browser host compiles the same `PluginApi.cs` directly into its own binary, so a plugin built against the SDK's contract assembly (`Retro96.dll`) shares exact type identity with the host at runtime — no host source or host binary is needed to author or build a plugin.
+
+## Plugin Package Layout
+
+A plugin package is a ZIP archive with the manifest at the root:
 
 ```text
 Example.r96p
@@ -10,6 +14,18 @@ Example.r96p
 └── lib/
     └── ExamplePlugin.dll
 ```
+
+Everything the plugin needs at runtime — dependency assemblies and the `.deps.json` produced by the build — belongs under `lib/`; the sandbox resolves plugin dependencies from the package.
+
+Install-time package limits, enforced while extracting:
+
+| Rule | Limit |
+|---|---|
+| Entries per package | 4,096 |
+| Uncompressed size per entry | 256 MiB |
+| Total uncompressed size | 1 GiB |
+| `plugin.json` size | 1 MiB |
+| Entry paths escaping the archive root | rejected |
 
 ## Requirements
 
@@ -60,93 +76,187 @@ public sealed class MyPlugin : IRetro96Plugin
 {
     public void Initialize(IRetro96PluginHost host)
     {
-        // Register features via host interfaces
+        // Query host.Info, register UI/embeds/protocols, subscribe to
+        // host.Events, read settings from host.Storage, ...
     }
 
     public void Dispose()
     {
+        // Called when the plugin is disabled, updated, or shut down.
     }
 }
 ```
+
+Entry-point rules:
+
+* `entryPoint` is the exact, case-sensitive, namespace-qualified type name (`Example.Plugin`). A `"Type, Assembly"` suffix is tolerated but the assembly part is ignored.
+* The type must implement `IRetro96Plugin` and have a public parameterless constructor.
+* `Initialize` runs once in the sandbox worker after the broker handshake. If it throws, the load fails and the error is recorded and shown in the Plugin Manager.
+* The plugin assembly is loaded into its own collectible `AssemblyLoadContext`; dependencies are resolved from the package's `.deps.json`.
 
 Do not reference `Retro96.csproj` directly. Plugins compile strictly against the SDK contract.
 
 ## Contract Assembly Naming (`Retro96.dll`)
 
-While the NuGet package ID is `Retro96.Plugin.SDK`, the compiled contract assembly is named `Retro96.dll`. Retro96 compiles `PluginApi.cs` directly into the host binary, matching runtime type identities across both sides.
+The NuGet package ID is `Retro96.Plugin.SDK`, but the contract assembly it produces is named `Retro96.dll` — the same name as the host binary. The host compiles `PluginApi.cs` into itself, and the plugin sandbox's loader maps references to either `Retro96` or `Retro96.Plugin.SDK` onto that single host contract assembly, so the CLR sees exactly one `IRetro96Plugin` / `IRetro96PluginHost` type identity on both sides of the broker pipe.
 
-Plugins built against pre-1.0.1 SDK revisions referenced an assembly named `Retro96.Plugin.SDK.dll` and will fail to load in current host versions. To fix this, delete your project's `bin`/`obj` folders, restore against the current SDK, rebuild, and repackage.
+Plugins built against pre-1.0.1 SDK revisions referenced an assembly named `Retro96.Plugin.SDK.dll`. If such a package fails to load against a current host (for example because it shipped its own stale copy of the contract DLL), delete the project's `bin`/`obj` folders, restore against the current SDK, rebuild, and repackage.
+
+## Plugin Lifecycle
+
+* Installing a `.r96p` registers the plugin **disabled by default**. Enable it in the Retro96 Plugin Manager (Preferences → Plugins) and grant permissions there. Loading an unpacked source folder additionally requires developer mode.
+* Only permissions declared in the manifest can ever be granted; names declared under `optional_permissions` can additionally be requested at runtime (see [Permissions](#permissions)).
+* **Updates** show a confirmation dialog listing the old and new DLL SHA-256 hashes, with explicit warnings when the manifest author changed or the new version is a downgrade. On update the plugin's `data/` directory is preserved, granted permissions are re-intersected with the new manifest's declared permissions, and newly requested permissions are surfaced for review.
+* **Crash policy**: a plugin whose worker crashes 3 times within 5 minutes is automatically disabled. Restarts use a 1 / 2 / 5 / 10 / 30-second backoff.
+* **Auditing**: every permission-gated call is recorded in a per-plugin activity log (permission, timestamp, and the network host where applicable; the last 1,000 entries are kept), viewable in the Plugin Manager.
 
 ## Plugin Manifest (`plugin.json`)
 
-The manifest defines identity, API version, entry point, permissions, supported MIME types, and the optional JavaScript bridge identifier:
+A complete example showing every optional field (most plugins use a small subset):
 
 ```json
 {
   "id": "example.plugin",
   "name": "Example Plugin",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "apiVersion": 1,
   "author": "Example Author",
   "description": "Example Retro96 plugin.",
+  "website": "https://example.test/",
+  "minHostVersion": "1.0.0",
   "assembly": "lib/ExamplePlugin.dll",
   "entryPoint": "Example.Plugin",
   "permissions": [
     "embed.renderer",
     "embed.network",
-    "embed.navigate",
     "embed.status",
     "embed.print",
     "embed.script"
   ],
-  "embed_types": [
-    "application/x-example"
+  "optional_permissions": [
+    "embed.navigate",
+    "embed.audio"
   ],
-  "script_name": "ExamplePlayer"
+  "embed_types": [
+    "application/x-example",
+    "application/example"
+  ],
+  "content_transform_scopes": [
+    { "url": "https://example.test/*", "mime": "text/html" }
+  ],
+  "script_name": "ExamplePlayer",
+  "settings": [
+    { "name": "loop", "type": "toggle", "label": "Loop playback", "default": "false" },
+    { "name": "quality", "type": "select", "label": "Quality", "options": [ "low", "high" ], "default": "high" },
+    { "name": "caption", "type": "text", "label": "Caption", "description": "Shown above the viewer." }
+  ]
 }
 ```
 
-* `embed_types`: MIME types the plugin can render.
-* `script_name`: The identifier exposed to document scripts for finding the plugin.
+### Field Reference
 
-Plugins install disabled by default. The host grants only permissions declared in the manifest and explicitly approved by the user.
+| Field | Required | Constraints |
+|---|---|---|
+| `id` | ✔ | 1–64 chars; letters, digits, `.`, `-`, `_`. Stable identity — also the install folder name. |
+| `name` | ✔ | ≤128 chars. |
+| `version` | | ≤32 chars; `major.minor.patch[-prerelease]`, compared numerically (up to 4 numeric parts, each clamped to 0–999). |
+| `apiVersion` | ✔ | Must be exactly `1`. |
+| `author` | | ≤128 chars. Changing it between versions triggers an update warning. |
+| `description` | | ≤1024 chars. |
+| `website` | | ≤2048 chars. |
+| `minHostVersion` | | ≤32 chars; installation is refused on older hosts. |
+| `assembly` | ✔ | ≤256 chars; a path inside the package (`lib/ExamplePlugin.dll`). |
+| `entryPoint` | ✔ | ≤512 chars; case-sensitive full type name implementing `IRetro96Plugin`. |
+| `permissions` | | Known names only (see [Permissions](#permissions)). These are the only permissions the host will grant. |
+| `optional_permissions` | | Known names; must not overlap `permissions`; requestable at runtime. |
+| `embed_types` | | MIME types, 3–256 chars each, must contain `/`. At least one is required for `embed.renderer`. |
+| `content_transform_scopes` | | 1–32 entries; at least one required for `content.transform`. |
+| `script_name` | | A JavaScript identifier, ≤128 chars; required for `embed.script`. |
+| `settings` | | ≤32 setting definitions (see below). |
 
-For `content.transform`, the manifest must also declare `content_transform_scopes`. Each entry has a URL glob and MIME glob; only matching responses are delivered to the plugin. Returned HTML is sanitized by the host before normal parsing.
+### Structural Dependency Rules
 
-```json
-"permissions": ["content.transform"],
-"content_transform_scopes": [
-  { "url": "https://example.test/*", "mime": "text/html" },
-  { "url": "https://example.test/docs/*", "mime": "text/*" }
-]
+* `embed.script` requires `embed.renderer` **and** a declared `script_name`.
+* `embed.renderer` requires at least one `embed_types` entry.
+* `content.transform` requires at least one `content_transform_scopes` entry.
+* `permissions` and `optional_permissions` must be disjoint.
+* MIME types passed to `Embeds.Register` must be declared in `embed_types` — the host rejects undeclared types at registration time.
+
+### Content-Transform Scopes
+
+Each scope entry carries a `url` glob (1–2048 chars) and a MIME-shaped `mime` glob (e.g. `text/html`, `text/*`). Matching is case-insensitive; `*` matches any sequence and `?` matches one character. Only responses matching a scope are delivered to the plugin (input capped at 8 MiB). Returned HTML (also capped at 8 MiB) is sanitized by the host — `<script>` elements, `on*` attributes, and `javascript:` / `vbscript:`-style URLs are stripped — before it is handed to the normal parser.
+
+### Plugin Settings
+
+Declared settings are rendered by the host in Preferences → Plugins as native toggle / text / select controls:
+
+* Names: 1–64 chars from letters, digits, `.`, `_`, `-`; unique per plugin.
+* Types: `toggle`, `text`, `select` (1–32 options, each ≤128 chars).
+* `label` ≤128, `description` ≤512, `default` ≤2048 chars.
+
+Values persist in the plugin's own storage under `settings.<name>` keys, so read them from code with the storage service:
+
+```csharp
+string quality = host.Storage.Get("settings.quality") ?? "high";
 ```
 
-`*` matches any sequence and `?` matches one character. Scope patterns are limited to 2048 characters per entry.
+## Permissions
 
-## Core API Services (`Retro96.Plugins`)
+Permissions are granted only for names declared in the manifest, only after explicit user approval, and are grouped into tiers shown to the user:
 
-The public API defined in `Retro96.Plugin.SDK/PluginApi.cs` provides access to host services:
+| Tier | Permissions |
+|---|---|
+| **Sensitive** (reads user/page data; requesting one alongside `network` triggers an additional data-exfiltration warning) | `browser.read`, `browser.cookies`, `browser.screenshot`, `clipboard`, `page.read`, `content.transform`, `tabs`, `history`, `bookmarks` |
+| **Elevated** | `browser.navigate`, `browser.windows`, `network`, `filesystem`, `audio.playback`, `dialogs`, `embed.renderer`, `embed.network`, `embed.navigate`, `embed.print`, `embed.script`, `network.rules`, `protocol`, `page.style`, `downloads`, `embed.audio` |
+| **Standard** | `browser.events`, `ui`, `storage`, `browser.zoom`, `browser.find`, `ui.panel`, `notifications`, `embed.status`, `omnibox`, `settings`, `ui.extras`, `embed.extras` |
 
-* **`IBrowserService`**: URL/title access, navigation, reloading, history, tabs, scrolling, zoom, viewport sizing, cookies, find-in-page, and PNG screenshots.  
-  *Permissions*: `browser.read`, `browser.navigate`, `browser.windows`, `browser.events`, `browser.zoom`, `browser.cookies`, `browser.find`, `browser.screenshot`
-* **`IUiService`**: Custom menus, toolbar items, context options, status text, progress meters, dialogs, and constrained UI panels.  
-  *Permissions*: `ui`, `ui.panel`
-* **`INetworkService`**: Managed HTTP GET, POST, and custom requests.  
-  *Permission*: `network`
-* **`IFileSystemService`**: File operations confined to the plugin's isolated data directory.  
-  *Permission*: `filesystem`
-* **`IStorageService`**: Key-value storage, JSON serialization helpers, and storage usage metrics.  
-  *Permission*: `storage`
-* **`IEventsService`**: Browser lifecycle events and worker-local timers.  
-  *Permissions*: `browser.events` (timers do not require permissions)
-* **`IClipboardService`**: System clipboard text and image access.  
-  *Permission*: `clipboard`
-* **`IAudioService`**: Audio playback, looping, and volume control.  
-  *Permission*: `audio.playback`
-* **`INotificationService`**: System desktop notifications with interaction callbacks.  
-  *Permission*: `notifications`
-* **`IDialogsService`**: Isolated file open and save dialogs.  
-  *Permission*: `dialogs`
+### Optional Permissions and Runtime Requests
+
+Permissions listed under `optional_permissions` can be requested while the plugin runs; the host shows the user a consent prompt with the permission's risk notes:
+
+```csharp
+if (!host.HasPermission(PluginPermission.PageRead))
+{
+    bool granted = await host.RequestPermissionAsync("page.read");
+}
+```
+
+Requests for names not declared in `optional_permissions` are refused outright. Grants are pushed to the running plugin live (they take effect immediately; no restart needed).
+
+## Host API Surface
+
+`IRetro96PluginHost` exposes the following services. Every call crosses the sandbox broker and is permission-checked on **both** ends — calling a service without its permission throws `SecurityException`.
+
+| Property | Interface | Permission(s) | Highlights |
+|---|---|---|---|
+| `Browser` | `IPluginBrowser` | `browser.read`, `browser.navigate`, `browser.windows`, `browser.zoom`, `browser.cookies`, `browser.find`, `browser.screenshot` | Current URL/title, navigate/reload/back/forward, open window, scroll, zoom get/set, cookies, find-in-page, viewport size, PNG screenshot. |
+| `Page` | `IPluginPageRead` | `page.read` | Page text (capped at 512 KiB), links (≤2000), current selection. |
+| `Ui` | `IPluginUi` | `ui` (+ `ui.panel` for panels) | File-menu items, toolbar buttons, context-menu entries, status text, progress meter, message/input dialogs, widget panels (labels, buttons, text boxes, checkboxes, list boxes). |
+| `UiExtras` | `IPluginUiExtras` | `ui.extras` | Toolbar buttons with PNG icon and menu placement, status badge, keyboard shortcuts (conflicts with built-ins or other plugins are rejected and reported). |
+| `Storage` | `IPluginStorage` | `storage` | String key/value store with JSON object helpers (`GetObject`/`SetObject`) and used-byte reporting; also holds manifest setting values. |
+| `FileSystem` | `IPluginFileSystem` | `filesystem` | Read/write/list/delete, strictly confined to the plugin's private data directory. |
+| `Network` | `IPluginNetwork` | `network` | Brokered HTTP GET/POST/custom requests, plus streamed (`IPluginNetworkResponse`) variants. |
+| `NetworkRules` | `IPluginNetworkRules` | `network.rules` | Up to 100 declarative block / redirect / strip-header rules, evaluated host-side (the plugin never sees live requests). |
+| `Protocols` | `IPluginProtocols` | `protocol` | Register a custom URL scheme; response bodies up to 32 MiB and are parsed by the normal host renderer. |
+| `ContentTransform` | `IPluginContentTransform` | `content.transform` | Rewrite HTML responses matching the manifest scopes; output is sanitized before parsing. |
+| `PageStyle` | `IPluginPageStyle` | `page.style` | Inject CSS (≤64 KiB; `url()`, `@import`, `-moz-binding`, `behavior` are stripped). |
+| `Tabs` | `IPluginTabs` | `tabs` | Tab URL/title summaries and a `BeforeNavigate` allow/cancel/redirect decision with a 750 ms budget. |
+| `History` | `IPluginHistory` | `history` | Capped history search (≤100 results). |
+| `Bookmarks` | `IPluginBookmarks` | `bookmarks` | List (≤500), add, and remove bookmarks. |
+| `Downloads` | `IPluginDownloads` | `downloads` | Host-validated HTTP(S) downloads into the plugin data directory, with progress events. |
+| `Omnibox` | `IPluginOmnibox` | `omnibox` | Register an address-bar keyword returning up to 8 suggestions. |
+| `Clipboard` | `IPluginClipboard` | `clipboard` | Text and PNG image get/set, plus change notification. |
+| `Events` | `IPluginEvents` | `browser.events` (clipboard/audio events require `clipboard` / `audio.playback`) | Navigation, page-load, title, load-progress, zoom, focus, and shutdown events; worker-local timers. |
+| `Audio` | `IPluginAudio` | `audio.playback` | Play files from the data directory or raw PCM; volume, loop, completion event. |
+| `Notifications` | `IPluginNotifications` | `notifications` | Notifications with optional click callbacks. |
+| `Dialogs` | `IPluginDialogs` | `dialogs` | Open/save file pickers scoped to the plugin data directory. |
+| `Embeds` | `IPluginEmbeddedContentService` | `embed.renderer` (+ per-capability embed permissions) | Embedded content registration — see below. |
+| `Log` | `IPluginLogger` | — | Info/warn/error lines appended to the plugin's log file. |
+| `Info` | `IPluginHostInfo` | — | Host version, API version, capability query (`IsSupported`), theme, locale, DPI. |
+
+The host object itself also exposes `Manifest`, `GrantedPermissions`, `HasPermission(permission)`, and `RequestPermissionAsync(name)`.
+
+Timers need no permission: `host.Events.CreateTimer(TimeSpan, callback)` runs entirely inside the plugin worker.
 
 ---
 
@@ -180,6 +290,10 @@ public sealed class MyEmbeddedPlugin : IRetro96Plugin
 }
 ```
 
+`EmbeddedContentContext` carries the MIME type, source URL, current page URL, user agent, the initial width/height, and `Parameters` — the attributes of the `<embed>` element as a dictionary.
+
+Every MIME type passed to `Register` must be declared in the manifest's `embed_types`.
+
 ### Rendering & Compositing
 
 Plugins render frames into software pixel buffers rather than accessing native window handles (`HWND` or GDI surfaces):
@@ -190,7 +304,10 @@ Task<EmbeddedFrameBuffer> RenderAsync(
     CancellationToken cancellationToken = default);
 ```
 
-`EmbeddedFrameBuffer` supplies dimensions, stride, and BGRA-8888 premultiplied pixel data. The host composites these buffers using Skia.
+* While an embed is visible, the host requests frames continuously (~30 fps). Each `RenderAsync` call must complete within **~1 second** or the call times out — keep rendering synchronous and fast.
+* The frame must match the requested width and height, use a stride of at least `width * 4`, and carry exactly `stride * height` bytes of BGRA-8888 premultiplied pixel data. Call `frame.Validate()` before returning; malformed frames are rejected.
+* Print rendering arrives as `EmbeddedRenderRequest.IsPrint = true` with a target DPI (requires `embed.print`).
+* The host composites the buffers into the page using Skia.
 
 ### Input Handling
 
@@ -202,7 +319,7 @@ Task HandleInputAsync(
     CancellationToken cancellationToken = default);
 ```
 
-Supported events: mouse movement, button states, scroll wheel, key presses, text input, and window focus changes.
+Supported events: mouse move, mouse down/up, mouse wheel, key down/up, text input, and focus gained/lost. Modifier state (Shift/Ctrl/Alt/Meta) and coordinates arrive with each event.
 
 ### Data Streams
 
@@ -222,42 +339,32 @@ public interface IPluginByteStream : IDisposable
 }
 ```
 
-Plugins request additional bytes explicitly via `RequestMoreAsync` to prevent buffering large resources unnecessarily.
-
-If `CanSeek` is true, cast the stream to `IPluginSeekableByteStream`:
-
-```csharp
-public interface IPluginSeekableByteStream : IPluginByteStream
-{
-    Task<EmbeddedSeekResult> SeekAsync(
-        long offset, 
-        SeekOrigin origin, 
-        CancellationToken cancellationToken = default);
-}
-```
+* The host delivers data in chunks of at most 1 MiB, but only after the plugin asks: call `RequestMoreAsync(maxBytes)` and consume chunks from the `ChunkReceived` event. This keeps large media from being buffered wholesale.
+* If `CanSeek` is true, cast to `IPluginSeekableByteStream` and use `SeekAsync(offset, origin)`; seeking resets any outstanding flow-control credit.
 
 ### Additional Embedded Capabilities
 
-* **Network**: Fetch secondary resources via `OpenStreamAsync` (requires `embed.network`). Returns a streamed `IPluginByteStream`.
-* **Context**: Inspect `CurrentUrl` and `UserAgent` via the host context.
-* **Navigation**: Trigger host navigation using `RequestNavigationAsync` (requires `embed.navigate`).
-* **Status**: Set host status bar text via `SetStatusAsync` (requires `embed.status`).
-* **Printing**: Render print frames at target DPI via `RenderAsync` when `EmbeddedRenderRequest.IsPrint` is true (requires `embed.print`).
+* **Network** — fetch secondary resources via `contentHost.OpenStreamAsync` (requires `embed.network`); returns the same streamed `IPluginByteStream` type over the brokered network path.
+* **Navigation** — trigger host navigation with `RequestNavigationAsync` (requires `embed.navigate`); limited to `http`, `https`, `file`, and `about` URLs.
+* **Status** — set host status bar text via `SetStatusAsync` (requires `embed.status`).
+* **Audio** — push PCM with `PushAudioAsync` (requires `embed.audio`): 8–48 kHz, 1–2 channels, signed 16-bit LE or float32 LE, ≤1 MiB per push, byte count aligned to whole frames. Pushed audio starts **muted** and is unmuted after the user interacts with the embed; use `SetMutedAsync` for explicit control. The host mixes all plugin audio.
+* **Extras** — set the embed cursor from a fixed set via `SetCursorAsync`, and receive visibility, pause, and resize notifications (requires `embed.extras`).
 
 ---
 
 ## Embedded JavaScript Bridge
 
-Request `embed.script` to enable asynchronous interop between page scripts and the plugin over the named-pipe broker.
+Request `embed.script` (which requires `embed.renderer` and a declared `script_name`) to enable asynchronous interop between page scripts and the plugin over the named-pipe broker.
 
 ### Type System (`JsValue`)
 
 The bridge supports flat, strongly-typed values:
-* Primitives: `null`, `string`, `number`, `bool`
-* Flat arrays of primitives
-* Flat key-value dictionaries of primitives
 
-Nested structures, function references, DOM nodes, and raw objects are unsupported.
+* Primitives: `null`, `string`, `number`, `bool` — numbers must be finite (NaN/Infinity are rejected).
+* Flat arrays of primitives (≤4096 elements).
+* Flat key-value dictionaries of primitives (≤4096 entries, non-empty keys).
+
+Nested structures, function references, DOM nodes, and raw objects are unsupported — these limits are enforced in both directions.
 
 ```csharp
 var args = new[] { JsValue.From("play"), JsValue.From(10.0), JsValue.From(true) };
@@ -271,7 +378,7 @@ var options = JsValue.FromObject(new Dictionary<string, JsValue>
 
 ### Exposing Plugin Methods
 
-Register handlers in `IEmbeddedScriptBridge.Methods`:
+Register handlers in `IEmbeddedScriptBridge.Methods`. Method names must be simple JavaScript identifiers (≤128 chars) and are validated when the instance is created:
 
 ```csharp
 script.Methods["getVersion"] = async args => JsValue.From("0.1");
@@ -303,77 +410,36 @@ JsValue result = await script.CallPageFunction(
 
 ---
 
-## Permission Reference
+## Limits and Timeouts
 
-```text
-browser.read
-browser.navigate
-browser.windows
-browser.events
-browser.zoom
-browser.cookies
-browser.find
-browser.screenshot
+Enforced by the sandbox broker; exceeding a limit fails the call:
 
-ui
-ui.panel
+| Resource | Limit |
+|---|---|
+| IPC control (JSON) message | 4 MiB |
+| IPC binary frame (pixels, streamed content) | 64 MiB |
+| Stream chunk | 1 MiB |
+| Page text / link count | 512 KiB / 2,000 |
+| History search results | 100 |
+| Bookmark list | 500 |
+| Network rules | 100 |
+| Page CSS | 64 KiB |
+| Content transform input / output | 8 MiB each |
+| Protocol response body | 32 MiB |
+| PCM audio push | 1 MiB (8–48 kHz, 1–2 ch, s16le / f32le) |
+| Toolbar icon | 64 KiB PNG |
+| Badge text | 32 chars |
+| Omnibox suggestions | 8 (text ≤256, URL ≤8192, description ≤512) |
+| RPC call timeout | 30 s default · ~1 s `embed.render` · 750 ms `beforeNavigate` |
+| Reserved protocol schemes | `http`, `https`, `file`, `about`, `data`, `javascript`, `mailto`, `retro96` |
+| Host-controlled HTTP headers | `Host`, `Content-Length`, `Connection` (`Cookie` requires `browser.cookies`) |
 
-storage
-network
-filesystem
-clipboard
-audio.playback
-notifications
-dialogs
-
-embed.renderer
-embed.network
-embed.navigate
-embed.status
-embed.print
-embed.script
-page.read
-network.rules
-protocol
-content.transform
-page.style
-tabs
-history
-bookmarks
-downloads
-omnibox
-settings
-ui.extras
-embed.audio
-embed.extras
-```
-
----
+A slow or throwing `BeforeNavigate` handler never blocks navigation: the default outcome is *allow* (an invalid redirect target yields *cancel*).
 
 ## Security & Isolation Model
 
-Plugins execute inside a sandboxed environment:
-* Out-of-process isolation via AppContainer and Windows Job Objects.
-* IPC mediated via a named-pipe broker enforcing permission checks on both ends.
-* No direct access to host filesystem paths, raw network sockets, or window handles.
-* Frame buffers composited host-side via Skia.
-
----
-
-## Packaging Examples
-
-To package a plugin using `pack-plugin.ps1`:
-
-```powershell
-# Director Stub Example
-.\Retro96.Plugin.SDK\pack-plugin.ps1 `
-  -Project .\examples\Retro96.DirectorStubPlugin\Retro96.DirectorStubPlugin.csproj `
-  -Manifest .\examples\Retro96.DirectorStubPlugin\plugin.json
-
-# Sample Plugin Example
-.\Retro96.Plugin.SDK\pack-plugin.ps1 `
-  -Project .\examples\Retro96.SamplePlugin\Retro96.SamplePlugin.csproj `
-  -Manifest .\examples\Retro96.SamplePlugin\plugin.json
-```
-
-Output assemblies compile to their respective `dist/lib/` directories and package into `.r96p` archives.
+* Each enabled plugin runs in its **own sandboxed worker process** — the Retro96 binary relaunched as a plugin worker — inside a per-plugin Windows **AppContainer** profile and **Job Object** (kill-on-close, single child process, per-process memory cap, CPU capped at 25%).
+* All communication crosses a **named-pipe broker** whose ACL contains only that plugin's AppContainer SID. Permissions are demanded on both ends: the worker refuses to send operations the plugin hasn't been granted, and the host re-checks on receipt.
+* No direct access to host filesystem paths (the plugin sees only its private data directory, with path-escape checks), no raw network sockets (HTTP is brokered and header-injection is rejected), and no window or GDI handles (frames are composited host-side via Skia).
+* Plugin-produced content is sanitized before use: transform HTML has script elements, `on*` attributes, and script-scheme URLs stripped; injected CSS has `url()`, `@import`, `-moz-binding`, and `behavior` removed; custom protocol responses are parsed by the normal, untrusted-content renderer path.
+* Permission-gated calls are recorded in the per-plugin activity log; crashes are contained (the worker dies, the browser doesn't) and repeated crashes auto-disable the plugin.
