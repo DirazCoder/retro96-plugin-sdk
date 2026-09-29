@@ -46,7 +46,7 @@ public sealed class DirectorStubPlugin : IRetro96Plugin
             _stream = stream;
             _host = host;
             _scripts = scripts;
-            _scripts.Methods["getByteCount"] = _ => Task.FromResult(JsValue.From(Bytes));
+            _scripts.Methods["getByteCount"] = _ => Task.FromResult(JsValue.From((double)Bytes));
             _scripts.Methods["getMimeType"] = _ => Task.FromResult(JsValue.From(_context.MimeType));
             _stream.ChunkReceived += OnChunk;
             _ = _stream.RequestMoreAsync(256 * 1024);
@@ -83,7 +83,7 @@ public sealed class DirectorStubPlugin : IRetro96Plugin
             try
             {
                 await _scripts.CallPageFunction("retro96DirectorStreamReady",
-                    [JsValue.From(Bytes), JsValue.From(_context.MimeType)]).ConfigureAwait(false);
+                    [JsValue.From((double)Bytes), JsValue.From(_context.MimeType)]).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -107,7 +107,7 @@ public sealed class DirectorStubPlugin : IRetro96Plugin
             int y = Math.Max(2, (height - (7 * scale * 2 + 4 * scale)) / 2);
             DrawText(pixels, width, height, stride, line1, scale, y, 32, 32, 32);
             DrawText(pixels, width, height, stride, line2, scale, y + 9 * scale, 32, 32, 32);
-            return Task.FromResult(new EmbeddedFrameBuffer(width, height, stride, pixels));
+            return Task.FromResult(new EmbeddedFrameBuffer(width, height, stride, pixels).Validate());
         }
 
         public Task HandleInputAsync(EmbeddedInputEvent inputEvent, CancellationToken cancellationToken = default)

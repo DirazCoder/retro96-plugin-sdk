@@ -1,5 +1,6 @@
 <Project>
   <PropertyGroup>
+    <!-- SDK/package contract version. Keep this at 1.0.0 for the current breaking contract. -->
     <Retro96PluginSdkVersion>1.0.0</Retro96PluginSdkVersion>
   </PropertyGroup>
 </Project>

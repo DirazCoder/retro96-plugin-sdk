@@ -1,13 +1,30 @@
 # Retro96 Transform Sample
 
-This is a small C# example for the `content.transform` API. Its manifest scopes transformations to `https://example.test/*` HTML responses.
+A small example for the current `content.transform` API. Its manifest declares a scoped HTML transform for `https://example.test/*`.
 
-The host only delivers responses that match both the declared URL and MIME scopes. Returned HTML is sanitized by the host: `<script>` elements, `on*` event attributes, and `javascript:` URL attributes are removed before the normal page parser runs.
+## Build and package
 
-Build with:
+From the SDK root:
 
 ```powershell
-dotnet build examples/Retro96.TransformSamplePlugin/Retro96.TransformSamplePlugin.csproj -c Release
+.\scripts\pack-plugin.ps1 .\examples\Retro96.TransformSamplePlugin
 ```
 
-Package with `pack-plugin.ps1` using `plugin.json` from this directory.
+From this plugin directory:
+
+```powershell
+..\..\scripts\pack-plugin.ps1
+```
+
+Output:
+
+```text
+dist/
+├── build/
+├── obj/
+├── lib/
+└── packages/
+    └── retro96.transform.sample-1.0.0.r96p
+```
+
+The example uses `IPluginContentTransform.Register` from the current API. Change `content_transform_scopes` in `plugin.json` when experimenting with other response scopes.

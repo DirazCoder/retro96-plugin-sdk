@@ -1,19 +1,30 @@
 # Retro96 Sample Plugin
 
-This project is a real C# plugin built against the standalone `Retro96.Plugin.SDK` project.
+A small plugin that adds a File menu command and logs page-load events using the current 1.0.0 API.
 
-It does not reference the browser host project for API contracts. The SDK is the only Retro96 compile-time dependency needed to write a plugin.
+## Build and package
 
-Build it with:
+From the SDK root:
 
 ```powershell
-dotnet build examples/Retro96.SamplePlugin/Retro96.SamplePlugin.csproj -c Release
+.\scripts\pack-plugin.ps1 .\examples\Retro96.SamplePlugin
 ```
 
-The compiled plugin DLL is copied to:
+From this plugin directory:
+
+```powershell
+..\..\scripts\pack-plugin.ps1
+```
+
+Output:
 
 ```text
-examples/Retro96.SamplePlugin/dist/lib/Retro96.SamplePlugin.dll
+dist/
+├── build/
+├── obj/
+├── lib/
+└── packages/
+    └── retro96.sample-1.0.0.r96p
 ```
 
-Use `../../Retro96.Plugin.SDK/pack-plugin.ps1` to build and package it as `.r96p`.
+The final package contains `plugin.json` plus runtime files under `lib/`. The shared SDK contract is not packaged.
